@@ -3,3 +3,4 @@ strong_augment.egg-info
 .pytest_cahce
 notes.ipynb
 __pycache__
+.ipynb_checkpoints
