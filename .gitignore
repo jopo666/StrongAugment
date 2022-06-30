@@ -1,0 +1,5 @@
+scripts
+strong_augment.egg-info
+.pytest_cahce
+notes.ipynb
+__pycache__
