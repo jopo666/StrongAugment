@@ -4,3 +4,4 @@ strong_augment.egg-info
 notes.ipynb
 __pycache__
 .ipynb_checkpoints
+dist

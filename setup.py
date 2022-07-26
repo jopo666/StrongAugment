@@ -5,14 +5,6 @@ __version__ = "0.0.1"
 with open("README.md", "r", encoding="utf-8") as f:
     long_description = f.read()
 
-requirements = []
-with open("./requirements.txt", "r") as f:
-    for line in f.readlines():
-        if line.startswith("--"):
-            continue
-        requirements.append(line.rstrip("\n"))
-
-
 setuptools.setup(
     name="strong_augment",
     version=__version__,
@@ -33,5 +25,8 @@ setuptools.setup(
     ],
     keywords="augmentation",
     python_requires=">=3.9",
-    install_requires=requirements,
+    install_requires=[
+        "torchvision>=0.12",
+        "Pillow>=9.1",
+    ],
 )
