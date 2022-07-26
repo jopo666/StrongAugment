@@ -1,4 +1,4 @@
-# Exposing and fixing the fragility of neural networks in digital pathology [[`arXiv`]](https://arxiv.org/abs/2206.15274)
+# Exposing and addressing the fragility of neural networks in digital pathology [[`arXiv`]](https://arxiv.org/abs/2206.15274)
 
 This repository contains implementations for `StrongAugment` and creating distribution-shifted datasets for **_shifted evaluation_** of neural networks intended for clinical practice. Simply put, without strong augmentation, your neural networks will be extremely fragile to even small distribution shifts. This is beautifully shown in the figure below, where `StrongAugment` is compared to `RandAugment` and `TrivialAugment` on histological samples where the haematoxylin and eosin stains have been computationally modified. All cells have been annotated with AUROC values.
 
