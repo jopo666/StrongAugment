@@ -5,9 +5,8 @@ from functools import partial
 import torchvision.transforms.functional as F
 from strong_augment import shift_dataset
 
-IMAGE_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)), "strong_augment", "image.jpeg"
-)
+from utils import IMAGE_PATH
+
 TMP_DIR = os.path.join(os.path.dirname(__file__), "tmp")
 
 

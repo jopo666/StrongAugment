@@ -1,6 +1,8 @@
 import numpy
-from strong_augment import EXAMPLE_IMAGE, apply_op
+from strong_augment import apply_op
 from strong_augment._operations import adjust_channel, gaussian_blur
+
+from utils import EXAMPLE_IMAGE
 
 IMAGE_ARRAY = numpy.array(EXAMPLE_IMAGE)
 
@@ -8,20 +10,32 @@ IMAGE_ARRAY = numpy.array(EXAMPLE_IMAGE)
 def test_adjust_channels():
     # magnitude 0.
     assert (
-        numpy.array(adjust_channel(EXAMPLE_IMAGE.convert("L"), 0, channel=4235)) == 0
+        numpy.array(
+            adjust_channel(EXAMPLE_IMAGE.convert("L"), 0, channel=4235)
+        )
+        == 0
     ).all()
-    assert (numpy.array(adjust_channel(EXAMPLE_IMAGE, 0, channel=0)) == 0)[..., 0].all()
-    assert (numpy.array(adjust_channel(EXAMPLE_IMAGE, 0, channel=1)) == 0)[..., 1].all()
-    assert (numpy.array(adjust_channel(EXAMPLE_IMAGE, 0, channel=2)) == 0)[..., 2].all()
+    assert (numpy.array(adjust_channel(EXAMPLE_IMAGE, 0, channel=0)) == 0)[
+        ..., 0
+    ].all()
+    assert (numpy.array(adjust_channel(EXAMPLE_IMAGE, 0, channel=1)) == 0)[
+        ..., 1
+    ].all()
+    assert (numpy.array(adjust_channel(EXAMPLE_IMAGE, 0, channel=2)) == 0)[
+        ..., 2
+    ].all()
     # no operation.
     assert (
-        numpy.array(adjust_channel(EXAMPLE_IMAGE, 1.0, channel=0)) == IMAGE_ARRAY
+        numpy.array(adjust_channel(EXAMPLE_IMAGE, 1.0, channel=0))
+        == IMAGE_ARRAY
     ).all()
     assert (
-        numpy.array(adjust_channel(EXAMPLE_IMAGE, 1.0, channel=1)) == IMAGE_ARRAY
+        numpy.array(adjust_channel(EXAMPLE_IMAGE, 1.0, channel=1))
+        == IMAGE_ARRAY
     ).all()
     assert (
-        numpy.array(adjust_channel(EXAMPLE_IMAGE, 1.0, channel=2)) == IMAGE_ARRAY
+        numpy.array(adjust_channel(EXAMPLE_IMAGE, 1.0, channel=2))
+        == IMAGE_ARRAY
     ).all()
     # halve.
     assert (
@@ -43,16 +57,36 @@ def test_brightness_contrast_gamma_zero():
 
 
 def test_no_op():
-    assert (numpy.array(apply_op(EXAMPLE_IMAGE, "red", 1.0)) == IMAGE_ARRAY).all()
-    assert (numpy.array(apply_op(EXAMPLE_IMAGE, "green", 1.0)) == IMAGE_ARRAY).all()
-    assert (numpy.array(apply_op(EXAMPLE_IMAGE, "blue", 1.0)) == IMAGE_ARRAY).all()
-    assert (numpy.array(apply_op(EXAMPLE_IMAGE, "hue", 0.0)) == IMAGE_ARRAY).all()
-    assert (numpy.array(apply_op(EXAMPLE_IMAGE, "gamma", 1.0)) == IMAGE_ARRAY).all()
-    assert (numpy.array(apply_op(EXAMPLE_IMAGE, "contrast", 1.0)) == IMAGE_ARRAY).all()
-    assert (numpy.array(apply_op(EXAMPLE_IMAGE, "sharpness", 1)) == IMAGE_ARRAY).all()
-    assert (numpy.array(apply_op(EXAMPLE_IMAGE, "blur", 0)) == IMAGE_ARRAY).all()
-    assert (numpy.array(apply_op(EXAMPLE_IMAGE, "posterize", 8)) == IMAGE_ARRAY).all()
-    assert (numpy.array(apply_op(EXAMPLE_IMAGE, "solarize", 256)) == IMAGE_ARRAY).all()
+    assert (
+        numpy.array(apply_op(EXAMPLE_IMAGE, "red", 1.0)) == IMAGE_ARRAY
+    ).all()
+    assert (
+        numpy.array(apply_op(EXAMPLE_IMAGE, "green", 1.0)) == IMAGE_ARRAY
+    ).all()
+    assert (
+        numpy.array(apply_op(EXAMPLE_IMAGE, "blue", 1.0)) == IMAGE_ARRAY
+    ).all()
+    assert (
+        numpy.array(apply_op(EXAMPLE_IMAGE, "hue", 0.0)) == IMAGE_ARRAY
+    ).all()
+    assert (
+        numpy.array(apply_op(EXAMPLE_IMAGE, "gamma", 1.0)) == IMAGE_ARRAY
+    ).all()
+    assert (
+        numpy.array(apply_op(EXAMPLE_IMAGE, "contrast", 1.0)) == IMAGE_ARRAY
+    ).all()
+    assert (
+        numpy.array(apply_op(EXAMPLE_IMAGE, "sharpness", 1)) == IMAGE_ARRAY
+    ).all()
+    assert (
+        numpy.array(apply_op(EXAMPLE_IMAGE, "blur", 0)) == IMAGE_ARRAY
+    ).all()
+    assert (
+        numpy.array(apply_op(EXAMPLE_IMAGE, "posterize", 8)) == IMAGE_ARRAY
+    ).all()
+    assert (
+        numpy.array(apply_op(EXAMPLE_IMAGE, "solarize", 256)) == IMAGE_ARRAY
+    ).all()
     assert (
         numpy.array(apply_op(EXAMPLE_IMAGE, "saturation", 1.0)) == IMAGE_ARRAY
     ).all()

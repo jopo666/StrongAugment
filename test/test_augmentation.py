@@ -1,5 +1,7 @@
 import numpy
-from strong_augment import EXAMPLE_IMAGE, StrongAugment
+from strong_augment import StrongAugment
+
+from utils import EXAMPLE_IMAGE
 
 
 def test_repeat_agumentation():
