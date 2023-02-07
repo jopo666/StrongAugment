@@ -69,8 +69,8 @@ If you use `StrongAugment` or **_shifted evaluation_**, please cite us!
 
 ```bibtex
 @paper{strong_augment2022,
-    title = {Exposing and addressing the fragility of neural networks in digital pathology},
-    author = {Pohjonen, Joona and Stürenberg, Carolin and Föhr, Atte and Rannikko, Antti and Mirtti, Tuomas and Pitkänen, Esa},
+    title = {Augment like there's no tomorrow: Consistently performing neural networks for medical imaging},
+    author = {Pohjonen, Joona and Stürenberg, Carolin and Föhr, Atte and Randen-Brady, Reija and Luomala, Lassi and Lohi, Jouni and Pitkänen, Esa and Rannikko, Antti and Mirtti, Tuomas},
     url = {https://arxiv.org/abs/2206.15274},
     publisher = {arXiv},
     year = {2022},
