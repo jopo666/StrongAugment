@@ -1,25 +1,26 @@
 import os
 import shutil
-from functools import partial
 
-import torchvision.transforms.functional as F
 from strong_augment import shift_dataset
 
-from utils import IMAGE_PATH
+from .utils import IMAGE_PATH
 
 TMP_DIR = os.path.join(os.path.dirname(__file__), "tmp")
+
+
+def augment(x):
+    return x.convert("L")
 
 
 def test_distribution_shift():
     if os.path.exists(TMP_DIR):
         shutil.rmtree(TMP_DIR)
     # Shift function.
-    output = shift_dataset(
+    shift_dataset(
         paths=[IMAGE_PATH] * 100,
         output_dir=TMP_DIR,
-        function=partial(F.adjust_gamma, gamma=0.2),
-        num_workers=1,
+        function=augment,
+        max_workers=1,
     )
-    assert output == []
     if os.path.exists(TMP_DIR):
         shutil.rmtree(TMP_DIR)

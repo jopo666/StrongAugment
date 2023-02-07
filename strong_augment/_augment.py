@@ -1,192 +1,400 @@
-import random
-from typing import Callable, Dict, List, Tuple, Union
+__all__ = ["StrongAugment", "get_augment_space", "ALLOWED_OPERATIONS"]
 
-import numpy
-from PIL import Image
-from torchvision.transforms import InterpolationMode
+import functools
+from typing import Optional, Union
 
-from ._operations import apply_op
+import cv2
+import numpy as np
+from numpy.random import RandomState
+from PIL import Image, ImageOps
 
-AFFINE_TRANSFORMS = {
-    "shearx",
-    "sheary",
-    "translatex",
-    "translatey",
-    "perspective",
-    "rotate",
+# Types.
+ImageType = Union[Image.Image, np.ndarray]
+MagnitudeType = Union[float, int, bool]
+
+# Error messages.
+ERROR_LENGTHS_DIFFER = "Operation length does not match probabilities length."
+ERROR_OPERATION_NOT_SUPPORTED = "Operation '{}' not supported. Please, select from: {}."
+ERROR_AUGMENT_SPACE_WRONG_TYPE = "Augment space should be a dictionary, not {}."
+ERROR_AUGMENT_SPACE_WRONG_BOUNDS_TYPE = (
+    "Augment space bounds should be a tuple of two elements (low, high)."
+)
+ERRPR_AUGMENT_SPACE_BOUND_TYPES_DIFFER = "Bound types should be the same ({} != {})"
+ERROR_AUGMENT_SPACE_WRONG_BOUND_TYPE = (
+    "Augment space bound should be int/float/bool, not {}."
+)
+ERROR_WRONG_OPERATION_BOUND_TYPE = "Bounds for operation '{}' should be {}, not {}."
+ERROR_WRONG_OPERATION_BOUND_RANGE = "Bounds for operation '{}' should be between [{}]."
+ERROR_NEGATIVE_OPERATION_BOUND = "Negative values are not allowed for operation '{}'"
+
+# Constants.
+BOUND_LENGTH = 2
+GRAYSCALE_NDIM = 2
+OPERATIONS_WITH_INT_BOUND = {"solarize", "posterize", "jpeg"}
+OPERATIONS_WITH_BOOL_BOUND = {"autocontrast", "equalize", "grayscale"}
+OPERATIONS_WITH_NON_NEGATIVE_BOUND = {
+    "red",
+    "green",
+    "blue",
+    "saturation",
+    "brightness",
+    "contrast",
+    "gamma",
+    "solarize",
+    "sharpen",
+    "emboss",
+    "blur",
+    "noise",
+    "jpeg",
+    "tone",
 }
-AUGMENTATION_SPACE = {
-    "identity": (True, False),
-    "red": (0.0, 2.0),
-    "green": (0.0, 2.0),
-    "blue": (0.0, 2.0),
-    "hue": (-0.5, 0.5),
-    "saturation": (0.0, 2.0),
-    "brightness": (0.1, 2.0),
-    "contrast": (0.1, 2.0),
-    "gamma": (0.1, 2.0),
-    "sharpness": (1.0, 4.0),
-    "blur": (0.0, 2.0),
-    "solarize": (0, 256),
-    "posterize": (1, 8),
-    "autocontrast": (True, False),
-    "equalize": (True, False),
-    "grayscale": (True, False),
-    "shearx": (-45.0, 45.0),
-    "sheary": (-45.0, 45.0),
-    "translatex": (-32.0, 32.0),
-    "translatey": (-32.0, 32.0),
-    "rotate": (-135.0, 135.0),
-}
+HUE_MIN = -0.5
+HUE_MAX = 0.5
+SOLARIZE_MAX = 256
+POSTERIZE_MIN = 1
+POSTERIZE_MAX = 8
+JPEG_MAX = 100
+TONE_MAX = 1.0
 
-__all__ = ["StrongAugment", "AUGMENTATION_SPACE", "augmentation_collage"]
+
+def get_augment_space() -> dict[str, tuple[float, float]]:
+    """Create a default augmentation space."""
+    return {
+        "red": (0.0, 2.0),
+        "green": (0.0, 2.0),
+        "blue": (0.0, 2.0),
+        "hue": (-0.5, 0.5),
+        "saturation": (0.0, 2.0),
+        "brightness": (0.1, 2.0),
+        "contrast": (0.1, 2.0),
+        "gamma": (0.1, 2.0),
+        "solarize": (0, 255),
+        "posterize": (1, 8),
+        "sharpen": (0.0, 1.0),
+        "emboss": (0.0, 1.0),
+        "blur": (0.0, 3.0),
+        "noise": (0.0, 0.2),
+        "jpeg": (0, 100),
+        "tone": (0.0, 1.0),
+        "autocontrast": (True, True),
+        "equalize": (True, True),
+        "grayscale": (True, True),
+    }
+
+
+DEFAULT_AUGMENT_SPACE = get_augment_space()
 
 
 class StrongAugment:
     def __init__(
         self,
-        p: float = 0.4,
-        min_ops: int = 2,
-        max_ops: int = 5,
-        max_affine: int = 1,
-        interpolation: InterpolationMode = InterpolationMode.NEAREST,
-        augmentation_space: Dict[
-            str, List[Union[int, float, bool]]
-        ] = AUGMENTATION_SPACE,
-        fill: List[int] = [128, 128, 128],
-    ):
-        """Strong automatic augmentation.
+        operations: tuple[int, ...] = (2, 3, 4),
+        probabilites: tuple[float, ...] = (0.5, 0.3, 0.2),
+        augment_space: dict[str, tuple] = DEFAULT_AUGMENT_SPACE,
+        seed: Optional[int] = None,
+    ) -> None:
+        """Augment like there's no tomorrow!
 
         Args:
-            p: Probability consecutive ops after `min_ops`. Defaults  to 0.4.
-            min_ops: Minimum number of operations. Defaults to 2.
-            max_ops: Maximum number of operations. Defaults to 5.
-            max_distortive: Maximum number of distortive operations. Defaults to 1.
-            interpolation: Interpolation method. Defaults to InterpolationMode.NEAREST.
-            augmentation_space: Augmentation space from where transforms and magntitudes
-                are sampled. Defaults to the one used in the original paper.
-            fill: Fill for distortive operations. Defaults to [128, 128, 128].
-        """
+            operations: Number of operations. Defaults to (2, 3, 4).
+            probabilites: Probabilities for each operation. Defaults to (0.5, 0.3, 0.2).
+            augment_space: Augmentation space where operations and magnitudes
+                are sampled from. Should contain a tuple with (low, high)
+                values for operation defined by the key. Defaults to
+                `get_augment_space()`.
+            seed: For `numpy.random.RandomState`.
+        """  # noqa: D400
+        super().__init__()
+        _check_augment_space(augment_space)
+        if len(operations) != len(probabilites):
+            raise ValueError(ERROR_LENGTHS_DIFFER)
+        self.rng = np.random.RandomState(seed=seed)
+        self.augment_space = augment_space
+        self.operations = operations
+        self.probabilites = probabilites
+        self.last_operations = {}
 
-        self.__p = p
-        self.__min_ops = min_ops
-        self.__max_ops = max_ops
-        self.__max_affine = max_affine
-        self.__interpolation = interpolation
-        self.__fill = fill
-        self.__augmentation_space = augmentation_space
-        self.__last_operations = []
-
-    def __call__(self, image: Image.Image) -> Image.Image:
-        if not isinstance(image, Image.Image):
-            raise TypeError("Expected a PIL image not {}".format(type(image)))
-        # Define possible operations.
-        operation_pool = list(self.__augmentation_space.keys())
-        # Start transforming images.
-        num_distortive = 0
-        num_operations = 0
-        self.__last_operations = []
-        while len(operation_pool) > 0:
-            # Select random operation and remove from the pool.
-            name = random.choice(operation_pool)
-            operation_pool.remove(name)
-            # Check if operation is allowed.
-            if name in AFFINE_TRANSFORMS:
-                if num_distortive >= self.__max_affine:
-                    # Operation not allowed.
-                    continue
-                else:
-                    num_distortive += 1
-            # Get magnitude.
-            magnitude = get_magntiude(*self.__augmentation_space[name])
-            # Apply transformation.
-            image = apply_op(
-                image,
-                name,
-                magnitude,
-                interpolation=self.__interpolation,
-                fill=self.__fill,
+    def __call__(self, image: ImageType) -> ImageType:
+        """Augment image."""
+        # Copy image.
+        image = image.copy()
+        # Convert to a numpy array.
+        to_pil = False
+        if isinstance(image, Image.Image):
+            to_pil = True
+            image = np.array(image)
+        # Convert to an RGB image.
+        to_gray = False
+        if image.ndim == GRAYSCALE_NDIM:
+            to_gray = True
+            image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
+        # Select operations.
+        num_ops = np.random.choice(self.operations, p=self.probabilites)
+        operations = np.random.choice(
+            list(self.augment_space), size=num_ops, replace=False
+        )
+        # Transform image.
+        for name in operations:
+            # Define kwargs.
+            kwargs = dict(
+                operation_name=name,
+                **_magnitude_kwargs(
+                    name, bounds=self.augment_space[name], rng=self.rng
+                ),
             )
-            # Save transform.
-            self.__last_operations.append((name, magnitude))
-            # Increase operation counter.
-            num_operations += 1
-            # Check if we continue.
-            if num_operations >= self.__min_ops:
-                if num_operations >= self.__max_ops:
-                    break
-                elif random.random() > self.__p:
-                    break
+            # Apply augmentation.
+            image = _apply_operation(image, **kwargs)
+            # Save last operations.
+            self.last_operations = kwargs
+        # Convert back to grayscale.
+        if to_gray:
+            image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        # Convert back to Pillow image.
+        if to_pil:
+            image = Image.fromarray(image)
         return image
 
-    def repeat(self, image: Image.Image) -> Image.Image:
-        if not isinstance(image, Image.Image):
-            raise TypeError("Expected a PIL image not {}".format(type(image)))
-        for name, magnitude in self.__last_operations:
-            image = apply_op(
-                image,
-                name,
-                magnitude,
-                interpolation=self.__interpolation,
-                fill=self.__fill,
-            )
-        return image
-
-    def __repr__(self):
-        return "{}(p={}, min_ops={}, max_ops={}, max_distortive={})".format(
-            self.__class__.__name__,
-            self.__p,
-            self.__min_ops,
-            self.__max_ops,
-            self.__max_affine,
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}("
+            f"operations={self.operations}, "
+            f"probabilites={self.probabilites}, "
+            f"augment_space={self.augment_space})"
         )
 
 
-def get_magntiude(
-    low: Union[float, int, bool], high: Union[float, int, bool]
-) -> Union[float, int, bool]:
-    if isinstance(low, float):
-        return random.uniform(low, high)
-    elif isinstance(low, bool):
-        return random.choice([True, False])
-    elif isinstance(low, int):
-        return random.choice(range(low, high + 1))
-    else:
+def adjust_channel(image: np.ndarray, magnitude: float, channel: int) -> np.ndarray:
+    image[..., channel] = cv2.addWeighted(
+        image[..., channel],
+        magnitude,
+        np.zeros_like(image[..., channel]),
+        1 - magnitude,
+        gamma=0,
+    )
+    return image
+
+
+def adjust_hue(image: np.ndarray, magnitude: float) -> np.ndarray:
+    hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
+    lut = np.arange(0, 256, dtype=np.int16)
+    lut = np.mod(lut + 180 * magnitude, 180).astype(np.uint8)
+    hsv[..., 0] = cv2.LUT(hsv[..., 0], lut)
+    return cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
+
+
+def adjust_saturation(image: np.ndarray, magnitude: float) -> np.ndarray:
+    gray = grayscale(image)
+    if magnitude == 0:
+        return gray
+    return cv2.addWeighted(image, magnitude, gray, 1 - magnitude, gamma=0)
+
+
+def adjust_brightness(image: np.ndarray, magnitude: float) -> np.ndarray:
+    return cv2.addWeighted(
+        image, magnitude, np.zeros_like(image), 1 - magnitude, gamma=0
+    )
+
+
+def adjust_contrast(image: np.ndarray, magnitude: float) -> np.ndarray:
+    mean = np.full_like(
+        image,
+        cv2.cvtColor(image, cv2.COLOR_RGB2GRAY).mean(),
+        dtype=image.dtype,
+    )
+    return cv2.addWeighted(image, magnitude, mean, 1 - magnitude, gamma=0)
+
+
+def adjust_gamma(image: np.ndarray, magnitude: float) -> np.ndarray:
+    table = (np.arange(0, 256.0 / 255, 1.0 / 255) ** magnitude) * 255
+    return cv2.LUT(image, table.astype(np.uint8))
+
+
+def solarize(image: np.ndarray, magnitude: int) -> np.ndarray:
+    lut = [(i if i < int(round(magnitude)) else 255 - i) for i in range(256)]
+    return cv2.LUT(image, np.array(lut, dtype=np.uint8))
+
+
+def posterize(image: np.ndarray, magnitude: int) -> np.ndarray:
+    return (image & -int(2 ** (8 - int(round(magnitude))))).astype(np.uint8)
+
+
+def autocontrast(image: np.ndarray, **__) -> np.ndarray:
+    # histogram function is ffffast as fuck in PIL.
+    return np.array(ImageOps.autocontrast(Image.fromarray(image)))
+
+
+def equalize(image: np.ndarray, **__) -> np.ndarray:
+    output = np.empty_like(image)
+    for c in range(image.shape[-1]):
+        output[..., c] = cv2.equalizeHist(image[..., c])
+    return output
+
+
+def grayscale(image: np.ndarray, **__) -> np.ndarray:
+    return cv2.cvtColor(cv2.cvtColor(image, cv2.COLOR_RGB2GRAY), cv2.COLOR_GRAY2RGB)
+
+
+def gaussian_blur(image: np.ndarray, magnitude: float) -> np.ndarray:
+    if magnitude <= 0:
+        return image
+    # Define kernel size.
+    kernel_size = round(float(magnitude) * 3.5)
+    kernel_size = max(3, kernel_size // 2 * 2 + 1)
+    return cv2.GaussianBlur(image, ksize=(kernel_size, kernel_size), sigmaX=magnitude)
+
+
+def sharpen(image: np.ndarray, magnitude: float) -> np.ndarray:
+    kernel_nochange = np.array([[0, 0, 0], [0, 1, 0], [0, 0, 0]], dtype=np.float32)
+    kernel_sharpen = np.array(
+        [[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]],
+        dtype=np.float32,
+    )
+    kernel = (1 - magnitude) * kernel_nochange + magnitude * kernel_sharpen
+    return cv2.filter2D(image, ddepth=-1, kernel=kernel)
+
+
+def emboss(image: np.ndarray, magnitude: float) -> np.ndarray:
+    kernel_nochange = np.array([[0, 0, 0], [0, 1, 0], [0, 0, 0]], dtype=np.float32)
+    kernel_emboss = np.array([[-2, -1, 0], [-1, 1, 1], [0, 1, 2]], dtype=np.float32)
+    kernel = (1 - magnitude) * kernel_nochange + magnitude * kernel_emboss
+    return cv2.filter2D(image, ddepth=-1, kernel=kernel)
+
+
+def jpeg(image: np.ndarray, magnitude: int) -> np.ndarray:
+    return cv2.imdecode(
+        cv2.imencode(".jpeg", image, (cv2.IMWRITE_JPEG_QUALITY, int(round(magnitude))))[
+            1
+        ],
+        cv2.IMREAD_UNCHANGED,
+    )
+
+
+def tone_shift(image: np.ndarray, magnitude_0: float, magnitude_1: float) -> np.ndarray:
+    t = np.linspace(0.0, 1.0, 256)
+    evaluate_bez = np.vectorize(
+        lambda t: 3 * (1 - t) ** 2 * t * magnitude_0
+        + 3 * (1 - t) * t**2 * magnitude_1
+        + t**3
+    )
+    remapping = np.rint(evaluate_bez(t) * 255).astype(np.uint8)
+    return cv2.LUT(image, lut=remapping)
+
+
+def add_noise(image: np.ndarray, magnitude: float) -> np.ndarray:
+    noise = np.random.randint(0, 255, size=image.shape[:2], dtype=np.uint8)
+    for c in range(3):
+        image[..., c] = cv2.addWeighted(
+            image[..., c], 1 - magnitude, noise, magnitude, gamma=0.0
+        )
+    return image
+
+
+NAME_TO_OPERATION = {
+    "red": functools.partial(adjust_channel, channel=0),
+    "green": functools.partial(adjust_channel, channel=1),
+    "blue": functools.partial(adjust_channel, channel=2),
+    "hue": adjust_hue,
+    "saturation": adjust_saturation,
+    "brightness": adjust_brightness,
+    "contrast": adjust_contrast,
+    "gamma": adjust_gamma,
+    "solarize": solarize,
+    "posterize": posterize,
+    "sharpen": sharpen,
+    "emboss": emboss,
+    "blur": gaussian_blur,
+    "noise": add_noise,
+    "jpeg": jpeg,
+    "tone": tone_shift,
+    "autocontrast": autocontrast,
+    "equalize": equalize,
+    "grayscale": grayscale,
+}
+ALLOWED_OPERATIONS = list(NAME_TO_OPERATION.keys())
+
+
+def _apply_operation(image: np.ndarray, operation_name: str, **kwargs) -> np.ndarray:
+    operation_fn = NAME_TO_OPERATION.get(operation_name.lower())
+    if operation_fn is None:
         raise ValueError(
-            "Augmentation space should contain int/float/bool, not  {}".format(
-                type(low)
+            ERROR_OPERATION_NOT_SUPPORTED.format(
+                operation_name.lower(), ALLOWED_OPERATIONS
             )
         )
+    return operation_fn(image, **kwargs)
 
 
-def augmentation_collage(
-    image: Image.Image,
-    augmentation: Callable,
-    nrows: int = 4,
-    ncols: int = 16,
-    shape: Tuple[int, int] = (64, 64),
-):
-    """Generate a collage image with the passed augmentation strategy.
+def _check_augment_space(space: dict[str, tuple[MagnitudeType, MagnitudeType]]) -> None:
+    """Check that passed augmentation space is valid."""
+    if not isinstance(space, dict):
+        raise TypeError(ERROR_AUGMENT_SPACE_WRONG_TYPE.format(type(space)))
+    for key, val in space.items():
+        if key not in ALLOWED_OPERATIONS:
+            raise ValueError(
+                ERROR_OPERATION_NOT_SUPPORTED.format(key.lower(), ALLOWED_OPERATIONS)
+            )
+        if not isinstance(val, tuple) or len(val) != BOUND_LENGTH:
+            raise TypeError(ERROR_AUGMENT_SPACE_WRONG_BOUNDS_TYPE)
+        # Check bounds.
+        low, high = val
+        if type(low) != type(high):
+            raise TypeError(
+                ERRPR_AUGMENT_SPACE_BOUND_TYPES_DIFFER.format(type(low), type(high))
+            )
+        if not isinstance(low, (int, float, bool)):
+            raise TypeError(ERROR_AUGMENT_SPACE_WRONG_BOUND_TYPE.format(type(low)))
+        _check_operation_bounds(key, low, high)
 
-    Args:
-        image: Input image.
-        auto_augment: AutoAugement strategy
-        nrows: Number of collage rows. Defaults to 4.
-        ncols: Number of collage columns. Defaults to 16.
-        shape: Shape of each image. Defaults to (64, 64).
 
-    Returns:
-        Collage image.
-    """
-    if not isinstance(image, Image.Image):
-        raise TypeError("Expected a PIL image not {}".format(type(image)))
-    collage = []
-    row = []
-    for i in range(nrows * ncols):
-        transformed = augmentation(image)
-        row.append(transformed.resize(shape))
-        if len(row) == ncols:
-            collage.append(numpy.hstack([numpy.array(x) for x in row]))
-            row = []
-    collage = numpy.vstack(collage)
-    return Image.fromarray(collage)
+def _check_operation_bounds(name: str, low: MagnitudeType, high: MagnitudeType) -> None:
+    # Check operation types.
+    if name in OPERATIONS_WITH_BOOL_BOUND and not isinstance(low, bool):
+        raise TypeError(ERROR_WRONG_OPERATION_BOUND_TYPE.format(name, bool, type(low)))
+    if name in OPERATIONS_WITH_INT_BOUND and (
+        not isinstance(low, int) or isinstance(low, bool)
+    ):
+        raise TypeError(ERROR_WRONG_OPERATION_BOUND_TYPE.format(name, int, type(low)))
+    if name not in OPERATIONS_WITH_BOOL_BOUND.union(OPERATIONS_WITH_INT_BOUND) and (
+        not isinstance(low, (int, float)) or isinstance(low, bool)
+    ):
+        raise TypeError(ERROR_WRONG_OPERATION_BOUND_TYPE.format(name, float, type(low)))
+    # Check operation bounds.
+    if low < 0 and name in OPERATIONS_WITH_NON_NEGATIVE_BOUND:
+        raise ValueError(ERROR_NEGATIVE_OPERATION_BOUND.format(name))
+    if name == "hue" and (low < HUE_MIN or high > HUE_MAX):
+        raise ValueError(ERROR_WRONG_OPERATION_BOUND_RANGE.format(name, (-0.5, 0.5)))
+    if name == "solarize" and high > SOLARIZE_MAX:
+        raise ValueError(ERROR_WRONG_OPERATION_BOUND_RANGE.format(name, (0, 256)))
+    if name == "posterize" and (high > POSTERIZE_MAX or low < POSTERIZE_MIN):
+        raise ValueError(ERROR_WRONG_OPERATION_BOUND_RANGE.format(name, (1, 8)))
+    if name == "jpeg" and high > JPEG_MAX:
+        raise ValueError(ERROR_WRONG_OPERATION_BOUND_RANGE.format(name, (0, 100)))
+    if name == "tone" and high > TONE_MAX:
+        raise ValueError(ERROR_WRONG_OPERATION_BOUND_RANGE.format(name, (0, 1.0)))
+
+
+def _magnitude_kwargs(
+    operation_name: str, bounds: tuple[MagnitudeType, MagnitudeType], rng: RandomState
+) -> Optional[dict[str, MagnitudeType]]:
+    """Generate magnitude kwargs for apply_operations."""
+    if operation_name == "tone":
+        return {
+            "magnitude_0": _sample_magnitude(*bounds, rng),
+            "magnitude_1": _sample_magnitude(*bounds, rng),
+        }
+    magnitude = _sample_magnitude(*bounds, rng)
+    if magnitude is None:
+        return {}
+    return {"magnitude": magnitude}
+
+
+def _sample_magnitude(
+    low: MagnitudeType, high: MagnitudeType, rng: RandomState
+) -> MagnitudeType:
+    """Sample magnitude value."""
+    if isinstance(low, float):
+        return rng.uniform(low, high)
+    if isinstance(low, int):
+        return rng.choice(range(low, high + 1))
+    # Boolean does not require arguments.
+    return None

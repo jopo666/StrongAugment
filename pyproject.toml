@@ -5,13 +5,18 @@ description = "Augment like there's no tomorrow: Consistently performing neural 
 authors = ["jopo666 <jopo@birdlover.com>"]
 license = "MIT"
 readme = "README.md"
-packages = [{ include = "strong-augment" }]
+packages = [{ include = "strong_augment" }]
 
 [tool.poetry.dependencies]
 python = "^3.9"
 numpy = "*"
-pillow = "^9.4.0"
-opencv-python-headless = "^4.7.0.68"
+pillow = "^9"
+opencv-python-headless = "^4.7"
+tqdm = "*"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "*"
+ipykernel = "*"
 
 [build-system]
 requires = ["poetry-core"]

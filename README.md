@@ -1,13 +1,12 @@
-# Exposing and addressing the fragility of neural networks in digital pathology [[`arXiv`]](https://arxiv.org/abs/2206.15274)
+# Augment like there's no tomorrow: Consistently performing neural networks for medical imaging [[`arXiv`]](https://arxiv.org/abs/2206.15274)
 
-This repository contains implementations for `StrongAugment` and creating distribution-shifted datasets for **_shifted evaluation_** of neural networks intended for clinical practice. Simply put, without strong augmentation, your neural networks will be extremely fragile to even small distribution shifts. This is beautifully shown in the figure below, where `StrongAugment` is compared to `RandAugment` and `TrivialAugment` on histological samples where the haematoxylin and eosin stains have been computationally modified. All cells have been annotated with AUROC values.
-
-![results](images/results.png)
+This repository contains implementations for `StrongAugment` and creating
+**_distribution-shifted_** datasets.
 
 ## Installation
 
 ```bash
-pip3 install strong_augment
+pip3 install strong-augment
 ```
 
 ## Training with strong augmentation.
@@ -22,24 +21,12 @@ trnsf = T.Compose(
     T.RandomResizedCrop(224),
     T.RandomVerticalFlip(0.5),
     T.RandomHorizontalFlip(0.5),
-    StrongAugment(min_ops=2, max_ops=4, p=0.4), # Just one line!
+    StrongAugment(operations=[2, 3, 4], probabilities=[0.5, 0.3, 0.2]), # Just one line!
     T.ToTensor(),
     T.Normalize(mean=[0.5, 0.5, 0.5], std=[0.2, 0.2, 0.2])
     T.RandomErase(0.2)
 )
 ```
-
-We can also visualize the augmented images!
-
-```python
-from PIL import Image
-from strong_augment import augmentation_collage, StrongAugment
-
-image = Image.open("/path/to/image.jpeg")
-augmentation_collage(image, StrongAugment())
-```
-![collage](images/collage.png)
-
 ## Creating shifted datasets.
 
 Function `shift_dataset` can be used create the distribution-shifted datasets for shifted evaluation.
