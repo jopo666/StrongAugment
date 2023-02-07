@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "strong-augment"
+version = "0.1.0"
+description = "Augment like there's no tomorrow: Consistently performing neural networks"
+authors = ["jopo666 <jopo@birdlover.com>"]
+license = "MIT"
+readme = "README.md"
+packages = [{ include = "strong-augment" }]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+numpy = "*"
+pillow = "^9.4.0"
+opencv-python-headless = "^4.7.0.68"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
