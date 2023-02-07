@@ -32,9 +32,11 @@ trnsf = T.Compose(
 We can also visualize the augmented images!
 
 ```python
-from strong_augment import augmentation_collage, EXAMPLE_IMAGE, StrongAugment
+from PIL import Image
+from strong_augment import augmentation_collage, StrongAugment
 
-augmentation_collage(EXAMPLE_IMAGE, StrongAugment())
+image = Image.open("/path/to/image.jpeg")
+augmentation_collage(image, StrongAugment())
 ```
 ![collage](images/collage.png)
 
