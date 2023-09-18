@@ -89,7 +89,7 @@ class StrongAugment:
     def __init__(
         self,
         operations: tuple[int, ...] = (2, 3, 4),
-        probabilites: tuple[float, ...] = (0.5, 0.3, 0.2),
+        probabilities: tuple[float, ...] = (0.5, 0.3, 0.2),
         augment_space: dict[str, tuple] = DEFAULT_AUGMENT_SPACE,
         seed: Optional[int] = None,
     ) -> None:
@@ -97,7 +97,7 @@ class StrongAugment:
 
         Args:
             operations: Number of operations. Defaults to (2, 3, 4).
-            probabilites: Probabilities for each operation. Defaults to (0.5, 0.3, 0.2).
+            probabilities: Probabilities for each operation. Defaults to (0.5, 0.3, 0.2).
             augment_space: Augmentation space where operations and magnitudes
                 are sampled from. Should contain a tuple with (low, high)
                 values for operation defined by the key. Defaults to
@@ -106,12 +106,12 @@ class StrongAugment:
         """  # noqa: D400
         super().__init__()
         _check_augment_space(augment_space)
-        if len(operations) != len(probabilites):
+        if len(operations) != len(probabilities):
             raise ValueError(ERROR_LENGTHS_DIFFER)
         self.rng = np.random.RandomState(seed=seed)
         self.augment_space = augment_space
         self.operations = operations
-        self.probabilites = probabilites
+        self.probabilities = probabilities
         self.last_operations = {}
 
     def __call__(self, image: ImageType) -> ImageType:
@@ -129,7 +129,7 @@ class StrongAugment:
             to_gray = True
             image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
         # Select operations.
-        num_ops = np.random.choice(self.operations, p=self.probabilites)
+        num_ops = np.random.choice(self.operations, p=self.probabilities)
         operations = np.random.choice(
             list(self.augment_space), size=num_ops, replace=False
         )
@@ -158,7 +158,7 @@ class StrongAugment:
         return (
             f"{self.__class__.__name__}("
             f"operations={self.operations}, "
-            f"probabilites={self.probabilites}, "
+            f"probabilities={self.probabilities}, "
             f"augment_space={self.augment_space})"
         )
 
